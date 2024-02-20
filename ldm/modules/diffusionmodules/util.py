@@ -44,8 +44,8 @@ def make_beta_schedule(schedule, n_timestep, linear_start=1e-4, linear_end=2e-2,
 
 
 def make_ddim_timesteps(ddim_discr_method, num_ddim_timesteps, num_ddpm_timesteps, verbose=True):
-    if ddim_discr_method == 'uniform':
-        c = num_ddpm_timesteps // num_ddim_timesteps
+    if ddim_discr_method == 'uniform':          # DDIM采样子序列步数有线性方法（uniform）和非线性方法（quad）
+        c = num_ddpm_timesteps // num_ddim_timesteps            # 总的ddpm除以ddim
         ddim_timesteps = np.asarray(list(range(0, num_ddpm_timesteps, c)))
     elif ddim_discr_method == 'quad':
         ddim_timesteps = ((np.linspace(0, np.sqrt(num_ddpm_timesteps * .8), num_ddim_timesteps)) ** 2).astype(int)
@@ -150,7 +150,7 @@ class CheckpointFunction(torch.autograd.Function):
 
 def timestep_embedding(timesteps, dim, max_period=10000, repeat_only=False):
     """
-    Create sinusoidal timestep embeddings.
+    Create sinusoidal timestep embeddings.      创建正弦时间步嵌入
     :param timesteps: a 1-D Tensor of N indices, one per batch element.
                       These may be fractional.
     :param dim: the dimension of the output.
@@ -161,7 +161,7 @@ def timestep_embedding(timesteps, dim, max_period=10000, repeat_only=False):
         half = dim // 2
         freqs = torch.exp(
             -math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) / half
-        ).to(device=timesteps.device)
+        ).to(device=timesteps.device)       # exp进行指数运算
         args = timesteps[:, None].float() * freqs[None]
         embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
         if dim % 2:

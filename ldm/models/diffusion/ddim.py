@@ -12,32 +12,32 @@ from ldm.modules.diffusionmodules.util import make_ddim_sampling_parameters, mak
 class DDIMSampler(object):
     def __init__(self, model, schedule="linear", **kwargs):
         super().__init__()
-        self.model = model
-        self.ddpm_num_timesteps = model.num_timesteps
-        self.schedule = schedule
+        self.model = model                                  # 注入模型
+        self.ddpm_num_timesteps = model.num_timesteps       # 时间步数
+        self.schedule = schedule                            # 规则
 
-    def register_buffer(self, name, attr):
+    def register_buffer(self, name, attr):                  # 注册缓存
         if type(attr) == torch.Tensor:
             if attr.device != torch.device("cuda"):
                 attr = attr.to(torch.device("cuda"))
         setattr(self, name, attr)
 
-    def make_schedule(self, ddim_num_steps, ddim_discretize="uniform", ddim_eta=0., verbose=True):
+    def make_schedule(self, ddim_num_steps, ddim_discretize="uniform", ddim_eta=0., verbose=True):      # 创建sample调度器
         self.ddim_timesteps = make_ddim_timesteps(ddim_discr_method=ddim_discretize, num_ddim_timesteps=ddim_num_steps,
-                                                  num_ddpm_timesteps=self.ddpm_num_timesteps,verbose=verbose)
-        alphas_cumprod = self.model.alphas_cumprod
-        assert alphas_cumprod.shape[0] == self.ddpm_num_timesteps, 'alphas have to be defined for each timestep'
+                                                  num_ddpm_timesteps=self.ddpm_num_timesteps,verbose=verbose)       # 计算ddim的时间
+        alphas_cumprod = self.model.alphas_cumprod                                  # 噪音调度，本质来讲就是alphas的函数曲线
+        assert alphas_cumprod.shape[0] == self.ddpm_num_timesteps, 'alphas have to be defined for each timestep'    # 判断采样时间戳是否和alphas曲线一样
         to_torch = lambda x: x.clone().detach().to(torch.float32).to(self.model.device)
 
         self.register_buffer('betas', to_torch(self.model.betas))
         self.register_buffer('alphas_cumprod', to_torch(alphas_cumprod))
         self.register_buffer('alphas_cumprod_prev', to_torch(self.model.alphas_cumprod_prev))
 
-        # calculations for diffusion q(x_t | x_{t-1}) and others
+        # calculations for diffusion q(x_t | x_{t-1}) and others        作为常量放到模型里,recip是反转的过程中恢复的系数
         self.register_buffer('sqrt_alphas_cumprod', to_torch(np.sqrt(alphas_cumprod.cpu())))
-        self.register_buffer('sqrt_one_minus_alphas_cumprod', to_torch(np.sqrt(1. - alphas_cumprod.cpu())))
-        self.register_buffer('log_one_minus_alphas_cumprod', to_torch(np.log(1. - alphas_cumprod.cpu())))
-        self.register_buffer('sqrt_recip_alphas_cumprod', to_torch(np.sqrt(1. / alphas_cumprod.cpu())))
+        self.register_buffer('sqrt_one_minus_alphas_cumprod', to_torch(np.sqrt(1. - alphas_cumprod.cpu())))  # minus前面的系数
+        self.register_buffer('log_one_minus_alphas_cumprod', to_torch(np.log(1. - alphas_cumprod.cpu())))   #
+        self.register_buffer('sqrt_recip_alphas_cumprod', to_torch(np.sqrt(1. / alphas_cumprod.cpu())))     #
         self.register_buffer('sqrt_recipm1_alphas_cumprod', to_torch(np.sqrt(1. / alphas_cumprod.cpu() - 1)))
 
         # ddim sampling parameters
@@ -77,8 +77,8 @@ class DDIMSampler(object):
                unconditional_conditioning=None,
                # this has to come in the same format as the conditioning, # e.g. as encoded tokens, ...
                **kwargs
-               ):
-        if conditioning is not None:
+               ):                                       # 进入ddim采样
+        if conditioning is not None:                    # 候选条件不为空的情况下
             if isinstance(conditioning, dict):
                 cbs = conditioning[list(conditioning.keys())[0]].shape[0]
                 if cbs != batch_size:
@@ -87,7 +87,7 @@ class DDIMSampler(object):
                 if conditioning.shape[0] != batch_size:
                     print(f"Warning: Got {conditioning.shape[0]} conditionings but batch-size is {batch_size}")
 
-        self.make_schedule(ddim_num_steps=S, ddim_eta=eta, verbose=verbose)
+        self.make_schedule(ddim_num_steps=S, ddim_eta=eta, verbose=verbose)         # 创建调度器
         # sampling
         C, H, W = shape
         size = (batch_size, C, H, W)
@@ -100,7 +100,7 @@ class DDIMSampler(object):
                                                     mask=mask, x0=x0,
                                                     ddim_use_original_steps=False,
                                                     noise_dropout=noise_dropout,
-                                                    temperature=temperature,
+                                                    temperature=temperature,      # 温度系数
                                                     score_corrector=score_corrector,
                                                     corrector_kwargs=corrector_kwargs,
                                                     x_T=x_T,
@@ -117,10 +117,10 @@ class DDIMSampler(object):
                       mask=None, x0=None, img_callback=None, log_every_t=100,
                       temperature=1., noise_dropout=0., score_corrector=None, corrector_kwargs=None,
                       unconditional_guidance_scale=1., unconditional_conditioning=None,):
-        device = self.model.betas.device
-        b = shape[0]
+        device = self.model.betas.device        # 获取device
+        b = shape[0]                            # batch size
         if x_T is None:
-            img = torch.randn(shape, device=device)
+            img = torch.randn(shape, device=device)     # 随机噪音
         else:
             img = x_T
 
@@ -131,30 +131,30 @@ class DDIMSampler(object):
             timesteps = self.ddim_timesteps[:subset_end]
 
         intermediates = {'x_inter': [img], 'pred_x0': [img]}
-        time_range = reversed(range(0,timesteps)) if ddim_use_original_steps else np.flip(timesteps)
+        time_range = reversed(range(0,timesteps)) if ddim_use_original_steps else np.flip(timesteps)    # 时间步长
         total_steps = timesteps if ddim_use_original_steps else timesteps.shape[0]
         print(f"Running DDIM Sampling with {total_steps} timesteps")
 
         iterator = tqdm(time_range, desc='DDIM Sampler', total=total_steps)
 
-        for i, step in enumerate(iterator):
-            index = total_steps - i - 1
-            ts = torch.full((b,), step, device=device, dtype=torch.long)
+        for i, step in enumerate(iterator):                     # 采样步数
+            index = total_steps - i - 1                         # 倒数第几步，前向刚好是相反的
+            ts = torch.full((b,), step, device=device, dtype=torch.long)            # timestep
 
-            if mask is not None:
+            if mask is not None:                                # 图片mask
                 assert x0 is not None
-                img_orig = self.model.q_sample(x0, ts)  # TODO: deterministic forward pass?
-                img = img_orig * mask + (1. - mask) * img
+                img_orig = self.model.q_sample(x0, ts)          # TODO: deterministic forward pass?
+                img = img_orig * mask + (1. - mask) * img       # 使用原始的图片进行代替
 
             outs = self.p_sample_ddim(img, cond, ts, index=index, use_original_steps=ddim_use_original_steps,
                                       quantize_denoised=quantize_denoised, temperature=temperature,
                                       noise_dropout=noise_dropout, score_corrector=score_corrector,
                                       corrector_kwargs=corrector_kwargs,
-                                      unconditional_guidance_scale=unconditional_guidance_scale,
+                                      unconditional_guidance_scale=unconditional_guidance_scale,        # CFG
                                       unconditional_conditioning=unconditional_conditioning)
             img, pred_x0 = outs
-            if callback: callback(i)
-            if img_callback: img_callback(pred_x0, i)
+            if callback: callback(i)                        # 回调
+            if img_callback: img_callback(pred_x0, i)       # 图片回调
 
             if index % log_every_t == 0 or index == total_steps - 1:
                 intermediates['x_inter'].append(img)
@@ -168,39 +168,39 @@ class DDIMSampler(object):
                       unconditional_guidance_scale=1., unconditional_conditioning=None):
         b, *_, device = *x.shape, x.device
 
-        if unconditional_conditioning is None or unconditional_guidance_scale == 1.:
+        if unconditional_conditioning is None or unconditional_guidance_scale == 1.:        # 如果cfg=1的情况下
             e_t = self.model.apply_model(x, t, c)
         else:
-            x_in = torch.cat([x] * 2)
-            t_in = torch.cat([t] * 2)
-            c_in = torch.cat([unconditional_conditioning, c])
-            e_t_uncond, e_t = self.model.apply_model(x_in, t_in, c_in).chunk(2)
-            e_t = e_t_uncond + unconditional_guidance_scale * (e_t - e_t_uncond)
+            x_in = torch.cat([x] * 2)                       # 将输入复制两次
+            t_in = torch.cat([t] * 2)                       # timesteps
+            c_in = torch.cat([unconditional_conditioning, c])       # 把空字符和prompt一起放到通道输入里一起来预测
+            e_t_uncond, e_t = self.model.apply_model(x_in, t_in, c_in).chunk(2)         # chunk拆分成两份，本质来讲就是c和uc放到一个batch里进行批量推理
+            e_t = e_t_uncond + unconditional_guidance_scale * (e_t - e_t_uncond)        # CFG的执行过程是：对U-Net输入不同的约束c，先用空字符串约束得到一个预测噪声e_t_uncond，再用输入的文本约束得到一个预测噪声e_t。之后令e_t = et_uncond + scale * (e_t - e_t_uncond)。scale大于1，即表明我们希望预测噪声更加靠近有输入文本的那一个。
 
         if score_corrector is not None:
             assert self.model.parameterization == "eps"
             e_t = score_corrector.modify_score(self.model, e_t, x, t, c, **corrector_kwargs)
 
-        alphas = self.model.alphas_cumprod if use_original_steps else self.ddim_alphas
+        alphas = self.model.alphas_cumprod if use_original_steps else self.ddim_alphas          #
         alphas_prev = self.model.alphas_cumprod_prev if use_original_steps else self.ddim_alphas_prev
         sqrt_one_minus_alphas = self.model.sqrt_one_minus_alphas_cumprod if use_original_steps else self.ddim_sqrt_one_minus_alphas
         sigmas = self.model.ddim_sigmas_for_original_num_steps if use_original_steps else self.ddim_sigmas
         # select parameters corresponding to the currently considered timestep
-        a_t = torch.full((b, 1, 1, 1), alphas[index], device=device)
+        a_t = torch.full((b, 1, 1, 1), alphas[index], device=device)            # 把alphas曲线中的采样步数对应的值取出来
         a_prev = torch.full((b, 1, 1, 1), alphas_prev[index], device=device)
         sigma_t = torch.full((b, 1, 1, 1), sigmas[index], device=device)
         sqrt_one_minus_at = torch.full((b, 1, 1, 1), sqrt_one_minus_alphas[index],device=device)
 
         # current prediction for x_0
-        pred_x0 = (x - sqrt_one_minus_at * e_t) / a_t.sqrt()
-        if quantize_denoised:
+        pred_x0 = (x - sqrt_one_minus_at * e_t) / a_t.sqrt()    # 基于t时刻带噪声的图像x预测了t0时刻未添加噪声的图像pred_x0
+        if quantize_denoised:                                           # 是否量化噪音
             pred_x0, _, *_ = self.model.first_stage_model.quantize(pred_x0)
         # direction pointing to x_t
         dir_xt = (1. - a_prev - sigma_t**2).sqrt() * e_t
-        noise = sigma_t * noise_like(x.shape, device, repeat_noise) * temperature
+        noise = sigma_t * noise_like(x.shape, device, repeat_noise) * temperature       #
         if noise_dropout > 0.:
             noise = torch.nn.functional.dropout(noise, p=noise_dropout)
-        x_prev = a_prev.sqrt() * pred_x0 + dir_xt + noise
+        x_prev = a_prev.sqrt() * pred_x0 + dir_xt + noise               # 最后计算出t-1时刻的降噪图像x_prev
         return x_prev, pred_x0
 
     @torch.no_grad()

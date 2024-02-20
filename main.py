@@ -194,7 +194,7 @@ class DataModuleFromConfig(pl.LightningDataModule):
             for k in self.datasets:
                 self.datasets[k] = WrappedDataset(self.datasets[k])
 
-    def _train_dataloader(self):
+    def _train_dataloader(self):        # 训练数据加载器
         is_iterable_dataset = isinstance(self.datasets['train'], Txt2ImgIterableBaseDataset)
         if is_iterable_dataset or self.use_worker_init_fn:
             init_fn = worker_init_fn
@@ -237,16 +237,17 @@ class DataModuleFromConfig(pl.LightningDataModule):
                           num_workers=self.num_workers, worker_init_fn=init_fn)
 
 
+# 设置回调函数
 class SetupCallback(Callback):
     def __init__(self, resume, now, logdir, ckptdir, cfgdir, config, lightning_config):
         super().__init__()
-        self.resume = resume
+        self.resume = resume   # 重新开始
         self.now = now
-        self.logdir = logdir
-        self.ckptdir = ckptdir
-        self.cfgdir = cfgdir
-        self.config = config
-        self.lightning_config = lightning_config
+        self.logdir = logdir    # 日志文件夹
+        self.ckptdir = ckptdir  # 模型文件夹
+        self.cfgdir = cfgdir    # 配置文件夹
+        self.config = config    # 配置
+        self.lightning_config = lightning_config    # 轻量配置
 
     def on_keyboard_interrupt(self, trainer, pl_module):
         if trainer.global_rank == 0:
@@ -457,6 +458,7 @@ if __name__ == "__main__":
     #           params:
     #               key: value
 
+    # 时间
     now = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
 
     # add cwd for convenience and to make classes in this file available when
@@ -464,6 +466,7 @@ if __name__ == "__main__":
     # (in particular `main.DataModuleFromConfig`)
     sys.path.append(os.getcwd())
 
+    # 解析参数
     parser = get_parser()
     parser = Trainer.add_argparse_args(parser)
 
@@ -474,7 +477,7 @@ if __name__ == "__main__":
             "If you want to resume training in a new log folder, "
             "use -n/--name in combination with --resume_from_checkpoint"
         )
-    if opt.resume:
+    if opt.resume:          # 重试
         if not os.path.exists(opt.resume):
             raise ValueError("Cannot find {}".format(opt.resume))
         if os.path.isfile(opt.resume):
@@ -518,7 +521,7 @@ if __name__ == "__main__":
         # merge trainer cli with config
         trainer_config = lightning_config.get("trainer", OmegaConf.create())
         # default to ddp
-        trainer_config["accelerator"] = "ddp"
+        trainer_config["accelerator"] = "ddp"               # 是否采用分布式训练
         for k in nondefault_trainer_args(opt):
             trainer_config[k] = getattr(opt, k)
         if not "gpus" in trainer_config:
@@ -532,7 +535,7 @@ if __name__ == "__main__":
         lightning_config.trainer = trainer_config
 
         # model
-        model = instantiate_from_config(config.model)
+        model = instantiate_from_config(config.model)   # 从配置中实例化模型
 
         # trainer and callbacks
         trainer_kwargs = dict()

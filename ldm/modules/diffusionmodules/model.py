@@ -532,7 +532,7 @@ class Decoder(nn.Module):
                                         stride=1,
                                         padding=1)
 
-    def forward(self, z):
+    def forward(self, z):                   # vae的解码器
         #assert z.shape[1:] == self.z_shape[1:]
         self.last_z_shape = z.shape
 

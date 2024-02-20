@@ -71,17 +71,17 @@ class TimestepBlock(nn.Module):
         """
 
 
-class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
+class TimestepEmbedSequential(nn.Sequential, TimestepBlock): # TimestepEmbedSequential由一个ResBlock和一个SpatialTransormer组成
     """
     A sequential module that passes timestep embeddings to the children that
     support it as an extra input.
     """
 
-    def forward(self, x, emb, context=None):
-        for layer in self:
-            if isinstance(layer, TimestepBlock):
+    def forward(self, x, emb, context=None):                    # x是latend id， h*w*inchannels，
+        for layer in self:                                      # 遍历网络，判断网络的类型，如果
+            if isinstance(layer, TimestepBlock):                # ResBlock也是继承TimestepBlock的
                 x = layer(x, emb)
-            elif isinstance(layer, SpatialTransformer):
+            elif isinstance(layer, SpatialTransformer):         # 如果是spatialtransormer，则输入的是context
                 x = layer(x, context)
             else:
                 x = layer(x)
@@ -508,7 +508,7 @@ class UNetModel(nn.Module):
             linear(model_channels, time_embed_dim),
             nn.SiLU(),
             linear(time_embed_dim, time_embed_dim),
-        )
+        )                       # 相当于一个MLP层，输出是4倍的model channels
 
         if self.num_classes is not None:
             self.label_emb = nn.Embedding(num_classes, time_embed_dim)
@@ -575,7 +575,7 @@ class UNetModel(nn.Module):
                             use_scale_shift_norm=use_scale_shift_norm,
                             down=True,
                         )
-                        if resblock_updown
+                        if resblock_updown          # 判断是否有残差下采样
                         else Downsample(
                             ch, conv_resample, dims=dims, out_channels=out_ch
                         )
@@ -720,20 +720,20 @@ class UNetModel(nn.Module):
             self.num_classes is not None
         ), "must specify y if and only if the model is class-conditional"
         hs = []
-        t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
-        emb = self.time_embed(t_emb)
+        t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)       # 创建模型通道
+        emb = self.time_embed(t_emb)                                            #
 
         if self.num_classes is not None:
             assert y.shape == (x.shape[0],)
             emb = emb + self.label_emb(y)
 
         h = x.type(self.dtype)
-        for module in self.input_blocks:
-            h = module(h, emb, context)
-            hs.append(h)
-        h = self.middle_block(h, emb, context)
-        for module in self.output_blocks:
-            h = th.cat([h, hs.pop()], dim=1)
+        for module in self.input_blocks:            #
+            h = module(h, emb, context)             # 输入是图片的噪音图，时间embedding，文本上下文
+            hs.append(h)                            # 收集每个block的输出结果
+        h = self.middle_block(h, emb, context)      #
+        for module in self.output_blocks:           #
+            h = th.cat([h, hs.pop()], dim=1)        # 这个是分别从hs里取出权重，和之前的h进行首尾相连
             h = module(h, emb, context)
         h = h.type(x.dtype)
         if self.predict_codebook_ids:

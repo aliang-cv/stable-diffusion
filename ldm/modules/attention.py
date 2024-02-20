@@ -44,7 +44,7 @@ class GEGLU(nn.Module):
         return x * F.gelu(gate)
 
 
-class FeedForward(nn.Module):
+class FeedForward(nn.Module):           # FeedForward通过非线性变换，先将数据映射到高纬度的空间再映射到低纬度的空间，提取了更深层次的特征
     def __init__(self, dim, dim_out=None, mult=4, glu=False, dropout=0.):
         super().__init__()
         inner_dim = int(dim * mult)
@@ -58,7 +58,7 @@ class FeedForward(nn.Module):
             project_in,
             nn.Dropout(dropout),
             nn.Linear(inner_dim, dim_out)
-        )
+        )                                       # 本质来讲就是MLP
 
     def forward(self, x):
         return self.net(x)
@@ -152,14 +152,14 @@ class SpatialSelfAttention(nn.Module):
 class CrossAttention(nn.Module):
     def __init__(self, query_dim, context_dim=None, heads=8, dim_head=64, dropout=0.):
         super().__init__()
-        inner_dim = dim_head * heads
-        context_dim = default(context_dim, query_dim)
+        inner_dim = dim_head * heads                                # 40*8
+        context_dim = default(context_dim, query_dim)               # 如果context的维度存在的话，否则采用query的维度
 
-        self.scale = dim_head ** -0.5
-        self.heads = heads
+        self.scale = dim_head ** -0.5           # dim head 40       更好d
+        self.heads = heads                      # heads 8
 
-        self.to_q = nn.Linear(query_dim, inner_dim, bias=False)
-        self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
+        self.to_q = nn.Linear(query_dim, inner_dim, bias=False)     # 这个是图像的输入
+        self.to_k = nn.Linear(context_dim, inner_dim, bias=False)   # 这个是context的输入
         self.to_v = nn.Linear(context_dim, inner_dim, bias=False)
 
         self.to_out = nn.Sequential(
@@ -168,16 +168,16 @@ class CrossAttention(nn.Module):
         )
 
     def forward(self, x, context=None, mask=None):
-        h = self.heads
+        h = self.heads                                              # 这个是经过project后的输出
 
-        q = self.to_q(x)
-        context = default(context, x)
+        q = self.to_q(x)                                           # latend 先经过一个线性层
+        context = default(context, x)                              # context存在则采用context，不存在则采用latend
         k = self.to_k(context)
         v = self.to_v(context)
 
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=h), (q, k, v))
 
-        sim = einsum('b i d, b j d -> b i j', q, k) * self.scale
+        sim = einsum('b i d, b j d -> b i j', q, k) * self.scale    #
 
         if exists(mask):
             mask = rearrange(mask, 'b ... -> b (...)')
@@ -200,22 +200,22 @@ class BasicTransformerBlock(nn.Module):
         self.ff = FeedForward(dim, dropout=dropout, glu=gated_ff)
         self.attn2 = CrossAttention(query_dim=dim, context_dim=context_dim,
                                     heads=n_heads, dim_head=d_head, dropout=dropout)  # is self-attn if context is none
-        self.norm1 = nn.LayerNorm(dim)
-        self.norm2 = nn.LayerNorm(dim)
+        self.norm1 = nn.LayerNorm(dim)          # 层数
+        self.norm2 = nn.LayerNorm(dim)          #
         self.norm3 = nn.LayerNorm(dim)
         self.checkpoint = checkpoint
 
-    def forward(self, x, context=None):
+    def forward(self, x, context=None):         # 前向是保存checkpoint
         return checkpoint(self._forward, (x, context), self.parameters(), self.checkpoint)
 
     def _forward(self, x, context=None):
-        x = self.attn1(self.norm1(x)) + x
-        x = self.attn2(self.norm2(x), context=context) + x
+        x = self.attn1(self.norm1(x)) + x                   # 这个本质来讲就是多头self attention
+        x = self.attn2(self.norm2(x), context=context) + x  # 这个才是cross attention
         x = self.ff(self.norm3(x)) + x
         return x
 
 
-class SpatialTransformer(nn.Module):
+class SpatialTransformer(nn.Module):        # 是由一连串的BasicTransformerBlock
     """
     Transformer block for image-like data.
     First, project the input (aka embedding)
@@ -227,14 +227,14 @@ class SpatialTransformer(nn.Module):
                  depth=1, dropout=0., context_dim=None):
         super().__init__()
         self.in_channels = in_channels
-        inner_dim = n_heads * d_head
+        inner_dim = n_heads * d_head     # 这个是多头的
         self.norm = Normalize(in_channels)
 
         self.proj_in = nn.Conv2d(in_channels,
-                                 inner_dim,
+                                 inner_dim,      # 这里会生成对应的多头的
                                  kernel_size=1,
                                  stride=1,
-                                 padding=0)
+                                 padding=0)     # project latend
 
         self.transformer_blocks = nn.ModuleList(
             [BasicTransformerBlock(inner_dim, n_heads, d_head, dropout=dropout, context_dim=context_dim)
@@ -249,12 +249,12 @@ class SpatialTransformer(nn.Module):
 
     def forward(self, x, context=None):
         # note: if no context is given, cross-attention defaults to self-attention
-        b, c, h, w = x.shape
-        x_in = x
-        x = self.norm(x)
-        x = self.proj_in(x)
-        x = rearrange(x, 'b c h w -> b (h w) c')
-        for block in self.transformer_blocks:
+        b, c, h, w = x.shape                # 获取latend的形状
+        x_in = x                            # latend的输入
+        x = self.norm(x)                    # 进行正则化
+        x = self.proj_in(x)                 # 图片格式转成latend形式
+        x = rearrange(x, 'b c h w -> b (h w) c')        # 进行reshape
+        for block in self.transformer_blocks:           # 遍历每个transformer头，
             x = block(x, context=context)
         x = rearrange(x, 'b (h w) c -> b c h w', h=h, w=w)
         x = self.proj_out(x)

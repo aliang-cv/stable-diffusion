@@ -3,7 +3,7 @@ import pytorch_lightning as pl
 import torch.nn.functional as F
 from contextlib import contextmanager
 
-from taming.modules.vqvae.quantize import VectorQuantizer2 as VectorQuantizer
+from taming.modules.vqvae.quantize import VectorQuantizer as VectorQuantizer
 
 from ldm.modules.diffusionmodules.model import Encoder, Decoder
 from ldm.modules.distributions.distributions import DiagonalGaussianDistribution
@@ -261,7 +261,7 @@ class VQModel(pl.LightningModule):
         return x
 
 
-class VQModelInterface(VQModel):
+class VQModelInterface(VQModel):            # 这个是vae
     def __init__(self, embed_dim, *args, **kwargs):
         super().__init__(embed_dim=embed_dim, *args, **kwargs)
         self.embed_dim = embed_dim
